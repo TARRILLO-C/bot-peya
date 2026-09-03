@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#080b14" />
+  <title>Avatar Facial — Control por Voz</title>
+  <meta name="description" content="Avatar facial interactivo que reacciona a comandos de voz: izquierda, derecha y sonrisa en tiempo real." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ========== PANTALLA DE CONFIGURACIÓN ========== -->
+  <div id="setup-screen" class="screen active">
+    <div class="setup-container">
+      <div class="logo-area">
+        <div class="logo-wordmark">Avatar Facial</div>
+        <p class="subtitle">Control por voz en tiempo real</p>
+      </div>
+
+      <div class="setup-card">
+        <h2>Carga tus 4 videos</h2>
+        <p class="setup-desc">
+          Graba videos cortos de tu rostro con cada gesto. Cada video debe
+          <strong>comenzar y terminar en posición neutral</strong> para que la
+          transición sea fluida.
+        </p>
+
+        <div class="videos-grid">
+          <!-- Idle -->
+          <div class="video-upload-item" id="slot-idle">
+            <div class="upload-label">Cara Neutral</div>
+            <div class="upload-hint">Loop de fondo</div>
+            <label class="upload-btn" for="file-idle">
+              <span class="btn-text">Seleccionar</span>
+              <input type="file" id="file-idle" accept="video/*" data-slot="idle" />
+            </label>
+            <div class="upload-status" id="status-idle"></div>
+          </div>
+
+          <!-- Izquierda -->
+          <div class="video-upload-item" id="slot-izquierda">
+            <div class="upload-label">Izquierda</div>
+            <div class="upload-hint">Giro izquierda</div>
+            <label class="upload-btn" for="file-izquierda">
+              <span class="btn-text">Seleccionar</span>
+              <input type="file" id="file-izquierda" accept="video/*" data-slot="izquierda" />
+            </label>
+            <div class="upload-status" id="status-izquierda"></div>
+          </div>
+
+          <!-- Derecha -->
+          <div class="video-upload-item" id="slot-derecha">
+            <div class="upload-label">Derecha</div>
+            <div class="upload-hint">Giro derecha</div>
+            <label class="upload-btn" for="file-derecha">
+              <span class="btn-text">Seleccionar</span>
+              <input type="file" id="file-derecha" accept="video/*" data-slot="derecha" />
+            </label>
+            <div class="upload-status" id="status-derecha"></div>
+          </div>
+
+          <!-- Sonrisa -->
+          <div class="video-upload-item" id="slot-sonrisa">
+            <div class="upload-label">Sonrisa</div>
+            <div class="upload-hint">Gesto de sonrisa</div>
+            <label class="upload-btn" for="file-sonrisa">
+              <span class="btn-text">Seleccionar</span>
+              <input type="file" id="file-sonrisa" accept="video/*" data-slot="sonrisa" />
+            </label>
+            <div class="upload-status" id="status-sonrisa"></div>
+          </div>
+        </div>
+
+        <div class="tips-box">
+          <div class="tip-title">Tips para grabar</div>
+          <ul>
+            <li>Usa fondo liso y luz constante en todos los videos</li>
+            <li>Cada gesto dura 1–2 segundos máximo</li>
+            <li>Empieza y termina en posición neutral</li>
+            <li>MP4, 720p o 1080p, 30fps</li>
+          </ul>
+        </div>
+
+        <button id="start-btn" class="start-btn" disabled>
+          <span id="start-btn-text">Carga los 4 videos para continuar</span>
+          <svg class="start-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== PANTALLA PRINCIPAL DEL AVATAR ========== -->
+  <div id="avatar-screen" class="screen">
+
+    <!-- Banner aviso iOS Safari -->
+    <div id="ios-banner" class="ios-banner" style="display:none">
+      <span>Safari/iOS: usa los botones tactiles — el reconocimiento de voz requiere Chrome en Android</span>
+      <button id="ios-banner-close" class="ios-banner-close">x</button>
+    </div>
+
+    <!-- VIDEO: ocupa toda la pantalla disponible -->
+    <div class="video-fullscreen" id="avatar-frame">
+
+      <!-- Overlay "Toca para activar" -->
+      <div id="tap-overlay" class="tap-overlay" style="display:none">
+        <div class="tap-content">
+          <div class="tap-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+          <p>Toca para activar</p>
+        </div>
+      </div>
+
+      <!-- Videos superpuestos para crossfade -->
+      <video id="video-a" class="avatar-video active-video" playsinline webkit-playsinline muted autoplay loop></video>
+      <video id="video-b" class="avatar-video"              playsinline webkit-playsinline muted></video>
+
+      <!-- Badge de gesto (sobre el video) -->
+      <div class="gesture-badge" id="gesture-badge">
+        <span id="gesture-label"></span>
+      </div>
+
+      <!-- Header flotante sobre el video -->
+      <header class="app-header">
+        <div class="header-logo">Avatar Facial</div>
+        <button id="settings-btn" class="icon-btn" title="Cambiar videos" aria-label="Configuracion">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Controles flotantes sobre el video (parte inferior) -->
+      <div class="controls-overlay">
+
+        <!-- Estado del microfono -->
+        <div class="mic-row">
+          <div class="mic-dot" id="mic-dot"></div>
+          <span id="mic-status-text">Inicializando...</span>
+          <!-- Ondas de audio -->
+          <div class="sound-waves" id="sound-waves">
+            <span class="wave"></span><span class="wave"></span><span class="wave"></span>
+          </div>
+        </div>
+
+        <!-- Transcripcion en vivo -->
+        <div class="transcript-area" id="transcript-area">
+          <span class="transcript-label">Escuchando:</span>
+          <span class="transcript-text" id="transcript-live"></span>
+        </div>
+
+        <!-- Ultimo comando detectado -->
+        <div class="last-command" id="last-command-panel" style="display:none">
+          <span class="command-chip" id="last-command-chip"></span>
+        </div>
+
+        <!-- Botones de gesto -->
+        <div class="manual-btns">
+          <button class="manual-btn" id="btn-izquierda" data-gesture="izquierda" id="cmd-izquierda">
+            Izquierda
+          </button>
+          <button class="manual-btn" id="btn-derecha" data-gesture="derecha" id="cmd-derecha">
+            Derecha
+          </button>
+          <button class="manual-btn" id="btn-sonrisa" data-gesture="sonrisa" id="cmd-sonrisa">
+            Sonrisa
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /video-fullscreen -->
+  </div>
+
+  <!-- ========== TOAST NOTIFICATIONS ========== -->
+  <div id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
