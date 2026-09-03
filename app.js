@@ -128,37 +128,42 @@ class VideoManager {
 
     this.isGesturePlaying = true;
 
-    // Prepara el video siguiente con el gesto
-    this._next.src  = src;
-    this._next.loop = false;
-    this._next.currentTime = 0;
+    // ── Carga el gesto en _next ──────────────────────────────
+    // _current (idle) sigue corriendo en el fondo con opacity 0
+    // cuando hagamos crossfade de vuelta, ya está listo → sin flash negro
+    this._next.src          = src;
+    this._next.loop         = false;
+    this._next.currentTime  = 0;
+    this._next.playsInline  = true;
+    this._next.muted        = true;
 
-    try {
-      await this._next.play();
-    } catch (_) { /* por si acaso */ }
+    // Espera que el video tenga suficientes datos antes de mostrarlo
+    // Esto evita el flash negro al inicio del gesto
+    await new Promise((resolve) => {
+      if (this._next.readyState >= 3) { resolve(); return; }
+      const onReady = () => {
+        this._next.removeEventListener('canplay', onReady);
+        resolve();
+      };
+      this._next.addEventListener('canplay', onReady);
+      // Safety timeout: si tarda más de 600ms, arranca igual
+      setTimeout(resolve, 600);
+    });
 
-    // Crossfade: current → next (gesto)
+    try { await this._next.play(); } catch (_) {}
+
+    // Crossfade: idle → gesto
     this._crossfade();
     if (onStart) onStart();
 
-    // Cuando el gesto termina, vuelve al idle
+    // Al terminar el gesto → crossfade de vuelta al idle
+    // El idle (_next ahora) NUNCA se detuvo, sigue corriendo → sin flash
     const handleEnd = () => {
-      this._next.removeEventListener('ended', handleEnd);
-
-      // Prepara el now-next con idle
-      this._next.src  = this.idleSrc;
-      this._next.loop = true;
-      this._next.currentTime = 0;
-
-      this._next.play().catch(() => {});
-
-      // Crossfade de vuelta al idle
-      this._crossfade();
+      this._crossfade();        // muestra idle (que ya está corriendo)
       this.isGesturePlaying = false;
       if (onEnd) onEnd();
     };
 
-    // Guardar referencia para poder remover si es necesario
     this._current.addEventListener('ended', handleEnd, { once: true });
   }
 
