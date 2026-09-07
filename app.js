@@ -137,8 +137,12 @@ class VideoManager {
     this._next.playsInline  = true;
     this._next.muted        = true;
 
+    // Pre-pinta el video en la GPU con opacity casi cero
+    // Esto fuerza al navegador a decodificar y subir el primer frame
+    // antes del crossfade → elimina el flash negro
+    this._next.style.opacity = '0.001';
+
     // Espera que el video tenga suficientes datos antes de mostrarlo
-    // Esto evita el flash negro al inicio del gesto
     await new Promise((resolve) => {
       if (this._next.readyState >= 3) { resolve(); return; }
       const onReady = () => {
@@ -146,11 +150,18 @@ class VideoManager {
         resolve();
       };
       this._next.addEventListener('canplay', onReady);
-      // Safety timeout: si tarda más de 600ms, arranca igual
-      setTimeout(resolve, 600);
+      // Safety timeout: si tarda más de 800ms, arranca igual
+      setTimeout(resolve, 800);
     });
 
     try { await this._next.play(); } catch (_) {}
+
+    // Espera que el primer frame esté realmente pintado en pantalla
+    // antes de hacer el crossfade (evita flash negro en el inicio)
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    // Limpia el estilo inline antes de que la clase CSS tome el control
+    this._next.style.opacity = '';
 
     // Crossfade: idle → gesto
     this._crossfade();
@@ -158,7 +169,10 @@ class VideoManager {
 
     // Al terminar el gesto → crossfade de vuelta al idle
     // El idle (_next ahora) NUNCA se detuvo, sigue corriendo → sin flash
-    const handleEnd = () => {
+    const handleEnd = async () => {
+      // Espera un frame para que el idle (que ya corre) tenga
+      // su último frame pintado antes de mostrarlo
+      await new Promise(resolve => requestAnimationFrame(resolve));
       this._crossfade();        // muestra idle (que ya está corriendo)
       this.isGesturePlaying = false;
       if (onEnd) onEnd();

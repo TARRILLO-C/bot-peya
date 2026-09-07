@@ -267,7 +267,7 @@ body {
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity 0.15s ease-in-out;   /* más rápido = menos flash visible */
+  transition: opacity 0.25s ease-in-out;   /* suave pero rápido — sin flash negro */
 }
 .avatar-video.active-video { opacity: 1; }
 
