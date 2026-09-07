@@ -128,21 +128,15 @@ class VideoManager {
 
     this.isGesturePlaying = true;
 
-    // ── Carga el gesto en _next ──────────────────────────────
-    // _current (idle) sigue corriendo en el fondo con opacity 0
-    // cuando hagamos crossfade de vuelta, ya está listo → sin flash negro
-    this._next.src          = src;
-    this._next.loop         = false;
-    this._next.currentTime  = 0;
-    this._next.playsInline  = true;
-    this._next.muted        = true;
+    // Carga el gesto en _next
+    // _current (idle) sigue corriendo en fondo — cuando volvamos, ya está listo
+    this._next.src         = src;
+    this._next.loop        = false;
+    this._next.currentTime = 0;
+    this._next.playsInline = true;
+    this._next.muted       = true;
 
-    // Pre-pinta el video en la GPU con opacity casi cero
-    // Esto fuerza al navegador a decodificar y subir el primer frame
-    // antes del crossfade → elimina el flash negro
-    this._next.style.opacity = '0.001';
-
-    // Espera que el video tenga suficientes datos antes de mostrarlo
+    // Espera que haya suficientes datos para reproducir sin saltos
     await new Promise((resolve) => {
       if (this._next.readyState >= 3) { resolve(); return; }
       const onReady = () => {
@@ -150,36 +144,49 @@ class VideoManager {
         resolve();
       };
       this._next.addEventListener('canplay', onReady);
-      // Safety timeout: si tarda más de 800ms, arranca igual
       setTimeout(resolve, 800);
     });
 
     try { await this._next.play(); } catch (_) {}
 
-    // Espera que el primer frame esté realmente pintado en pantalla
-    // antes de hacer el crossfade (evita flash negro en el inicio)
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    // Espera 2 frames para que la GPU decodifique el primer frame real
+    // (sin esto, el primer frame puede aparecer negro en móvil)
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-    // Limpia el estilo inline antes de que la clase CSS tome el control
-    this._next.style.opacity = '';
-
-    // Crossfade: idle → gesto
+    // Crossfade idle → gesto (SIN manipular style.opacity → evita frame a 0)
     this._crossfade();
     if (onStart) onStart();
 
-    // Al terminar el gesto → crossfade de vuelta al idle
-    // El idle (_next ahora) NUNCA se detuvo, sigue corriendo → sin flash
-    const handleEnd = async () => {
-      // Espera un frame para que el idle (que ya corre) tenga
-      // su último frame pintado antes de mostrarlo
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      this._crossfade();        // muestra idle (que ya está corriendo)
+    // ── Volver al idle ANTES de que el gesto termine ─────────────────────
+    // El evento 'ended' en móvil puede mostrar un frame negro (video cerrado).
+    // Con timeupdate disparamos el crossfade 150ms antes del final,
+    // así la transición termina justo cuando el video acaba → sin negro.
+    const FADE_MS = 0.18; // debe ser >= duración CSS transition (0.15s)
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      this._current.removeEventListener('timeupdate', handleTimeUpdate);
+      this._current.removeEventListener('ended',      handleEnded);
+      this._crossfade(); // idle (_next) ya está corriendo → sin negro
       this.isGesturePlaying = false;
       if (onEnd) onEnd();
     };
 
-    this._current.addEventListener('ended', handleEnd, { once: true });
+    const handleTimeUpdate = () => {
+      if (!this._current.duration) return;
+      const remaining = this._current.duration - this._current.currentTime;
+      if (remaining <= FADE_MS) finish();
+    };
+
+    // Fallback por si timeupdate no llega a tiempo
+    const handleEnded = () => finish();
+
+    this._current.addEventListener('timeupdate', handleTimeUpdate);
+    this._current.addEventListener('ended', handleEnded, { once: true });
   }
+
 
   /** Intercambia referencias y cambia la opacidad via CSS */
   _crossfade() {
