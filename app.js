@@ -275,26 +275,25 @@ class SpeechManager {
   }
 
   _onResult(e) {
-    let finalText   = '';
-    let interimText = '';
+    let latestText = '';
 
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const alts = [];
-      for (let a = 0; a < e.results[i].length; a++) {
-        alts.push(e.results[i][a].transcript.toLowerCase().trim());
-      }
-      const best = alts[0];
-      if (e.results[i].isFinal) finalText   += best + ' ';
-      else                      interimText += best;
+      const res = e.results[i];
+      for (let a = 0; a < res.length; a++) {
+        const text = res[a].transcript.toLowerCase().trim();
+        if (!latestText) latestText = text;
 
-      // Evaluar inmediatamente tanto final como interim para velocidad ultra rápida
-      const allText = alts.join(' ');
-      this._matchCommand(allText);
+        // Evaluar cada alternativa de inmediato para velocidad instantánea
+        if (this._matchCommand(text)) {
+          this.onTranscript(text);
+          return;
+        }
+      }
     }
 
-    this.onTranscript(interimText || finalText);
-
-    if (interimText) this._matchCommand(interimText);
+    if (latestText) {
+      this.onTranscript(latestText);
+    }
   }
 
   _matchCommand(text) {
@@ -541,19 +540,26 @@ class AvatarApp {
   }
 
   _startSpeech() {
-    // Mapeo de comandos: varias variantes → mismo gesto
-    // Incluye variantes con/sin tilde y errores comunes de transcripción
+    // Mapeo de comandos ultrarrápidos (coincide desde la primera sílaba)
     const commands = {
+      'izq':        () => this._triggerGesture('izquierda'),
+      'izquierd':   () => this._triggerGesture('izquierda'),
       'izquierda':  () => this._triggerGesture('izquierda'),
-      'isquierda':  () => this._triggerGesture('izquierda'),  // error tipográfico frecuente
+      'isquierda':  () => this._triggerGesture('izquierda'),
       'esquierda':  () => this._triggerGesture('izquierda'),
       'siquierda':  () => this._triggerGesture('izquierda'),
+
+      'der':        () => this._triggerGesture('derecha'),
+      'derec':      () => this._triggerGesture('derecha'),
       'derecha':    () => this._triggerGesture('derecha'),
       'la derecha': () => this._triggerGesture('derecha'),
+
+      'sonr':       () => this._triggerGesture('sonrisa'),
+      'sonri':      () => this._triggerGesture('sonrisa'),
+      'sonrí':      () => this._triggerGesture('sonrisa'),
       'sonríe':     () => this._triggerGesture('sonrisa'),
       'sonrisa':    () => this._triggerGesture('sonrisa'),
       'sonrie':     () => this._triggerGesture('sonrisa'),
-      'sonri':      () => this._triggerGesture('sonrisa'),
       'smile':      () => this._triggerGesture('sonrisa'),
       'ríe':        () => this._triggerGesture('sonrisa'),
     };
