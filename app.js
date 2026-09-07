@@ -69,21 +69,22 @@ class VideoStorage {
 // ─────────────────────────────────────────────
 class VideoManager {
   /**
-   * @param {HTMLVideoElement} videoA
-   * @param {HTMLVideoElement} videoB
+   * @param {HTMLVideoElement} videoA - Video permanente de fondo (Idle)
+   * @param {HTMLVideoElement} videoB - Video superpuesto para gestos
    */
   constructor(videoA, videoB) {
-    this.vA = videoA;
-    this.vB = videoB;
-    this._current = videoA; // el que está visible en frente (v-front)
-    this._next    = videoB; // el de atrás / reserva (v-back)
+    this.vIdle    = videoA;
+    this.vGesture = videoB;
     this.isGesturePlaying = false;
     this.idleSrc = null;
     this.gestureSrcs = {};
 
-    // Silenciar ambos
-    this.vA.muted = true;
-    this.vB.muted = true;
+    // Silenciar y configurar clases iniciales
+    this.vIdle.muted    = true;
+    this.vGesture.muted = true;
+
+    this.vIdle.className    = 'avatar-video v-idle';
+    this.vGesture.className = 'avatar-video v-gesture';
   }
 
   /** Asigna las fuentes de video cargadas */
@@ -96,37 +97,23 @@ class VideoManager {
     };
   }
 
-  /** Inicia el loop del idle en ambos/current */
+  /** Inicia el loop del idle permanente */
   async startIdle() {
-    this._current.src         = this.idleSrc;
-    this._current.loop        = true;
-    this._current.playsInline = true;
-    this._current.muted       = true;
-
-    this._next.src            = this.idleSrc;
-    this._next.loop           = true;
-    this._next.playsInline    = true;
-    this._next.muted          = true;
+    this.vIdle.src         = this.idleSrc;
+    this.vIdle.loop        = true;
+    this.vIdle.playsInline = true;
+    this.vIdle.muted       = true;
 
     try {
-      await Promise.all([this._current.play(), this._next.play()]);
-      this._current.classList.add('v-front');
-      this._next.classList.add('v-back');
+      await this.vIdle.play();
       return true;
     } catch (_) {
-      this._current.classList.add('v-front');
-      this._next.classList.add('v-back');
       return false;
     }
   }
 
   /**
-   * Reproduce un gesto con crossfade 100% fluido sin pantallazo negro.
-   * Método: 
-   * 1. Carga gesto en _next.
-   * 2. _next reproduce video. Cuando arranca, se le pone v-front (z-index alta).
-   * 3. _current (idle) se mantiene reproduciendo atrás (v-back).
-   * 4. Al terminar gesto o cerca del final, se restablece _next a idle en background y vuelve al frente idle suavemente.
+   * Reproduce un gesto sobre el video idle de fondo con 0% pantalla negra.
    */
   async playGesture(gestureName, onStart, onEnd) {
     if (this.isGesturePlaying) return;
@@ -135,89 +122,74 @@ class VideoManager {
 
     this.isGesturePlaying = true;
 
-    // Guardar referencia al video del idle que quedará debajo
-    const idleVideo = this._current;
-    const gestureVideo = this._next;
-
-    // Asegurar que el idle en el fondo no se detenga
-    if (idleVideo.paused) {
-      idleVideo.play().catch(() => {});
+    // Asegurar que el idle de fondo esté reproduciéndose
+    if (this.vIdle.paused) {
+      this.vIdle.play().catch(() => {});
     }
 
     // Configurar video de gesto
-    gestureVideo.src         = src;
-    gestureVideo.loop        = false;
-    gestureVideo.currentTime = 0;
-    gestureVideo.playsInline = true;
-    gestureVideo.muted       = true;
+    this.vGesture.src         = src;
+    this.vGesture.loop        = false;
+    this.vGesture.currentTime = 0;
+    this.vGesture.playsInline = true;
+    this.vGesture.muted       = true;
 
-    // Esperar a que el video de gesto esté listo y reproduciendo primer frame
+    // Esperar a que el video de gesto esté listo antes de hacerlo visible
     await new Promise((resolve) => {
-      let resolved = false;
+      let doneCalled = false;
       const done = () => {
-        if (!resolved) { resolved = true; resolve(); }
+        if (!doneCalled) { doneCalled = true; resolve(); }
       };
-      if (gestureVideo.readyState >= 3) {
+
+      if (this.vGesture.readyState >= 3) {
         done();
       } else {
-        gestureVideo.addEventListener('playing', done, { once: true });
-        gestureVideo.addEventListener('canplaythrough', done, { once: true });
-        setTimeout(done, 600);
+        this.vGesture.addEventListener('playing', done, { once: true });
+        this.vGesture.addEventListener('canplaythrough', done, { once: true });
+        setTimeout(done, 500);
       }
     });
 
-    try { await gestureVideo.play(); } catch (_) {}
+    try { await this.vGesture.play(); } catch (_) {}
 
-    // Esperar 2 frames de renderizado de GPU para asegurar textura pintada
+    // Esperar 2 frames de renderizado GPU
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-    // El video de gesto pasa al frente de manera instantánea o con fade muy suave
-    gestureVideo.className = 'avatar-video v-front';
-    idleVideo.className = 'avatar-video v-back';
+    // Hacer visible el video de gesto encima del idle
+    this.vGesture.classList.add('visible');
 
     if (onStart) onStart();
 
-    // Intercambiar referencias internas
-    this._current = gestureVideo;
-    this._next = idleVideo;
-
     let finished = false;
-    const finish = async () => {
+    const finish = () => {
       if (finished) return;
       finished = true;
 
-      gestureVideo.removeEventListener('timeupdate', onTick);
-      gestureVideo.removeEventListener('ended', onEnded);
+      this.vGesture.removeEventListener('timeupdate', onTick);
+      this.vGesture.removeEventListener('ended', onEnded);
 
-      // Cargar idle de vuelta en gestureVideo en background para tenerlo listo
-      idleVideo.className = 'avatar-video v-front';
-      gestureVideo.className = 'avatar-video v-back';
+      // Ocultar gesto (vuelve a verse el idle de fondo de inmediato)
+      this.vGesture.classList.remove('visible');
 
-      // Re-preparar gestureVideo con idle para la próxima transición
-      gestureVideo.src = this.idleSrc;
-      gestureVideo.loop = true;
-      gestureVideo.playsInline = true;
-      gestureVideo.muted = true;
-      gestureVideo.play().catch(() => {});
-
-      this._current = idleVideo;
-      this._next = gestureVideo;
-      this.isGesturePlaying = false;
-
-      if (onEnd) onEnd();
+      // Pausar gesto tras desvanecer
+      setTimeout(() => {
+        try { this.vGesture.pause(); } catch (_) {}
+        this.isGesturePlaying = false;
+        if (onEnd) onEnd();
+      }, 150);
     };
 
-    const FADE_MARGIN = 0.15; // segundos antes del final del video
+    const FADE_MARGIN = 0.15; // segundos antes de finalizar gesto
     const onTick = () => {
-      if (!gestureVideo.duration) return;
-      if (gestureVideo.duration - gestureVideo.currentTime <= FADE_MARGIN) {
+      if (!this.vGesture.duration) return;
+      if (this.vGesture.duration - this.vGesture.currentTime <= FADE_MARGIN) {
         finish();
       }
     };
     const onEnded = () => finish();
 
-    gestureVideo.addEventListener('timeupdate', onTick);
-    gestureVideo.addEventListener('ended', onEnded, { once: true });
+    this.vGesture.addEventListener('timeupdate', onTick);
+    this.vGesture.addEventListener('ended', onEnded, { once: true });
   }
 } // fin VideoManager
 
