@@ -215,8 +215,7 @@ class SpeechManager {
 
     this._active       = false; // queremos estar escuchando
     this._sessionOpen  = false; // sesión actualmente abierta
-    this._restartTimer = null;
-    this._errorCount   = 0;     // contador para backoff
+    this._keepAlive    = null;
 
     this._SR = SR;
     this._createInstance();
@@ -240,17 +239,25 @@ class SpeechManager {
     this.rec.onend    = ()  => this._onEnd();
   }
 
-  /** Inicia el ciclo de escucha continua */
+  /** Inicia el ciclo de escucha continua e ininterrumpida */
   start() {
     this._active = true;
-    this._errorCount = 0;
+    this.onStatusChange('listening', '🔴 Micrófono Activo — Escuchando siempre');
     this._doStart();
+
+    // Loop de respaldo continuo para reactivar al instante si Android la cierra
+    clearInterval(this._keepAlive);
+    this._keepAlive = setInterval(() => {
+      if (this._active && !this._sessionOpen) {
+        this._doStart();
+      }
+    }, 300);
   }
 
   /** Detiene completamente */
   stop() {
     this._active = false;
-    clearTimeout(this._restartTimer);
+    clearInterval(this._keepAlive);
     try { this.rec.abort(); } catch (_) {}
     this._sessionOpen = false;
     this.onStatusChange('off', 'Detenido');
@@ -263,15 +270,14 @@ class SpeechManager {
     } catch (e) {
       if (!e.message.includes('already started')) {
         this._createInstance();
-        setTimeout(() => this._doStart(), 50);
+        try { this.rec.start(); } catch (_) {}
       }
     }
   }
 
   _onStart() {
     this._sessionOpen = true;
-    this._errorCount  = 0;
-    this.onStatusChange('listening', '🔴 Micrófono Activo — Escuchando');
+    this.onStatusChange('listening', '🔴 Micrófono Activo — Escuchando siempre');
   }
 
   _onResult(e) {
@@ -283,7 +289,6 @@ class SpeechManager {
         const text = res[a].transcript.toLowerCase().trim();
         if (!latestText) latestText = text;
 
-        // Evaluar cada alternativa de inmediato para velocidad instantánea
         if (this._matchCommand(text)) {
           this.onTranscript(text);
           return;
@@ -308,26 +313,11 @@ class SpeechManager {
   }
 
   _onError(e) {
-    this._sessionOpen = false;
-    this._errorCount++;
-
-    // 'no-speech' es normal → reinicio inmediato en 10ms
-    if (e.error === 'no-speech') {
-      this.onStatusChange('listening', '🔴 Micrófono Activo — Escuchando');
-      this._scheduleRestart(10);
-      return;
-    }
-
-    if (e.error === 'network') {
-      const delay = Math.min(300 * this._errorCount, 1500);
-      this.onStatusChange('listening', 'Reconectando micrófono...');
-      this._createInstance();
-      this._scheduleRestart(delay);
-      return;
-    }
-
+    // Si no es un error de permiso fatal, mantener la sesión como abierta visualmente
     if (['not-allowed', 'audio-capture', 'service-not-allowed'].includes(e.error)) {
       this._active = false;
+      this._sessionOpen = false;
+      clearInterval(this._keepAlive);
       const msgs = {
         'not-allowed':         '❌ Permiso de micrófono denegado.',
         'audio-capture':       '❌ No se encontró micrófono.',
@@ -337,20 +327,16 @@ class SpeechManager {
       return;
     }
 
-    this._scheduleRestart(100);
+    // Para cualquier otro corte de red o no-speech, reactivar de inmediato
+    this._sessionOpen = false;
+    this._doStart();
   }
 
   _onEnd() {
     this._sessionOpen = false;
     if (!this._active) return;
-    // En móviles cuando se interrumpe la sesión, reiniciar inmediatamente sin espera
-    this._scheduleRestart(10);
-  }
-
-  _scheduleRestart(delay) {
-    clearTimeout(this._restartTimer);
-    if (!this._active) return;
-    this._restartTimer = setTimeout(() => this._doStart(), delay);
+    // Si la sesión finalizó normalmente, reactivarla inmediatamente
+    this._doStart();
   }
 }
 
