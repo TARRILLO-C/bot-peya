@@ -259,23 +259,35 @@ body {
   background: #000;
 }
 
-/* Los dos videos (crossfade) */
+/* ── Videos: crossfade sin negro ────────────────────────────────────────
+   Principio: el video de ATRAS siempre tiene opacity 1.
+   Solo el video de ADELANTE hace fade de 1→0 al salir.
+   Así nunca hay un frame donde el fondo negro se vea.
+   ─────────────────────────────────────────────────────────────────────── */
 .avatar-video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.15s ease-in-out;
-  /* Fuerza capa GPU propia → crossfade sin repintar → sin negro en móvil */
+  opacity: 0;         /* invisible por defecto (antes de startIdle) */
+  z-index: 1;
   will-change: opacity;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
-.avatar-video.active-video { opacity: 1; }
+
+/* Visible detrás del video principal (siempre opacity 1) */
+.avatar-video.v-back  { opacity: 1; z-index: 1; }
+
+/* Video principal: encima y visible */
+.avatar-video.v-front { opacity: 1; z-index: 2; }
+
+/* Video principal saliendo: fade de 1→0, se mantiene en z-index 2
+   para no exponer el fondo negro mientras el de abajo se ve */
+.avatar-video.v-out   { opacity: 0; z-index: 2; transition: opacity 0.15s ease-in-out; }
 
 /* ── Header flotante — oculto ── */
 .app-header { display: none; }

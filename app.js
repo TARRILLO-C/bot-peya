@@ -99,27 +99,26 @@ class VideoManager {
   /** Inicia el loop del idle — devuelve true si el autoplay funcionó */
   async startIdle() {
     const v = this._current;
-    v.src   = this.idleSrc;
-    v.loop  = true;
-    v.playsInline = true; // necesario para iOS
+    v.src         = this.idleSrc;
+    v.loop        = true;
+    v.playsInline = true;
+    v.muted       = true;
     try {
       await v.play();
-      v.classList.add('active-video');
-      this._next.classList.remove('active-video');
-      return true;  // autoplay OK
+      v.classList.add('v-front');
+      this._next.classList.remove('v-front', 'v-back', 'v-out');
+      return true;
     } catch (_) {
-      // Autoplay bloqueado (común en móvil sin gesto previo)
-      v.classList.add('active-video');
-      this._next.classList.remove('active-video');
-      return false; // necesita tap del usuario
+      v.classList.add('v-front');
+      this._next.classList.remove('v-front', 'v-back', 'v-out');
+      return false;
     }
   }
 
   /**
    * Reproduce un gesto y vuelve al idle.
-   * @param {string} gestureName — 'izquierda' | 'derecha' | 'sonrisa'
-   * @param {Function} onStart — callback cuando el gesto inicia
-   * @param {Function} onEnd   — callback cuando el gesto termina
+   * Crossfade basado en z-index: el video de atrás siempre tiene opacity 1
+   * → nunca se ve el fondo negro entre cambios.
    */
   async playGesture(gestureName, onStart, onEnd) {
     if (this.isGesturePlaying) return;
@@ -129,77 +128,87 @@ class VideoManager {
     this.isGesturePlaying = true;
 
     // Carga el gesto en _next
-    // _current (idle) sigue corriendo en fondo — cuando volvamos, ya está listo
+    // _current (idle) = v-front (z-index 2, opacity 1) — sigue visible
     this._next.src         = src;
     this._next.loop        = false;
     this._next.currentTime = 0;
     this._next.playsInline = true;
     this._next.muted       = true;
 
-    // Espera que haya suficientes datos para reproducir sin saltos
+    // Espera datos suficientes para reproducir
     await new Promise((resolve) => {
       if (this._next.readyState >= 3) { resolve(); return; }
-      const onReady = () => {
-        this._next.removeEventListener('canplay', onReady);
-        resolve();
-      };
+      const onReady = () => { this._next.removeEventListener('canplay', onReady); resolve(); };
       this._next.addEventListener('canplay', onReady);
       setTimeout(resolve, 800);
     });
 
     try { await this._next.play(); } catch (_) {}
 
-    // Espera 2 frames para que la GPU decodifique el primer frame real
-    // (sin esto, el primer frame puede aparecer negro en móvil)
+    // Espera 2 frames: GPU sube la textura del primer frame
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-    // Crossfade idle → gesto (SIN manipular style.opacity → evita frame a 0)
+    // Pone el gesto "detrás" visible antes del crossfade
+    // → cuando el idle (frente) se desvanezca, el gesto ya está pintado abajo
+    this._next.classList.add('v-back');
+
+    // Crossfade: idle (frente) → gesto (atrás → frente)
     this._crossfade();
     if (onStart) onStart();
 
-    // ── Volver al idle ANTES de que el gesto termine ─────────────────────
-    // El evento 'ended' en móvil puede mostrar un frame negro (video cerrado).
-    // Con timeupdate disparamos el crossfade 150ms antes del final,
-    // así la transición termina justo cuando el video acaba → sin negro.
-    const FADE_MS = 0.18; // debe ser >= duración CSS transition (0.15s)
+    // Vuelve al idle ANTES de que el gesto termine (180ms)
+    // para que la transición acabe justo cuando el video acaba → sin negro
+    const FADE_S = 0.18;
     let done = false;
 
     const finish = () => {
       if (done) return;
       done = true;
-      this._current.removeEventListener('timeupdate', handleTimeUpdate);
-      this._current.removeEventListener('ended',      handleEnded);
-      this._crossfade(); // idle (_next) ya está corriendo → sin negro
+      this._current.removeEventListener('timeupdate', onTick);
+      this._current.removeEventListener('ended',      onEnd_);
+      // El idle (_next) lleva corriendo todo el tiempo → ponlo visible atrás
+      this._next.classList.add('v-back');
+      this._crossfade();
       this.isGesturePlaying = false;
       if (onEnd) onEnd();
     };
 
-    const handleTimeUpdate = () => {
+    const onTick  = () => {
       if (!this._current.duration) return;
-      const remaining = this._current.duration - this._current.currentTime;
-      if (remaining <= FADE_MS) finish();
+      if (this._current.duration - this._current.currentTime <= FADE_S) finish();
     };
+    const onEnd_  = () => finish();
 
-    // Fallback por si timeupdate no llega a tiempo
-    const handleEnded = () => finish();
-
-    this._current.addEventListener('timeupdate', handleTimeUpdate);
-    this._current.addEventListener('ended', handleEnded, { once: true });
+    this._current.addEventListener('timeupdate', onTick);
+    this._current.addEventListener('ended', onEnd_, { once: true });
   }
 
-
-  /** Intercambia referencias y cambia la opacidad via CSS */
+  /**
+   * Crossfade basado en z-index:
+   *   - outgoing (frente, v-front) → añade v-out (fade 1→0, z-index 2)
+   *   - incoming (atrás, v-back)  → ya visible con opacity 1 debajo
+   *   - Tras 180ms: outgoing → invisible default, incoming → v-front
+   */
   _crossfade() {
-    // El "actual" pasa a ser el oculto
-    this._current.classList.remove('active-video');
-    this._next.classList.add('active-video');
+    const outgoing = this._current;
+    const incoming = this._next;
 
-    // Swap de referencias
-    const tmp     = this._current;
-    this._current = this._next;
-    this._next    = tmp;
+    // El video de frente empieza a desvanecerse (sigue en z-index 2)
+    outgoing.classList.add('v-out');
+
+    // Tras la transición: finaliza el intercambio de roles
+    setTimeout(() => {
+      outgoing.classList.remove('v-front', 'v-back', 'v-out'); // vuelve a invisible
+      incoming.classList.remove('v-back');
+      incoming.classList.add('v-front');                        // pasa a frente
+    }, 200);
+
+    // Intercambia referencias JS inmediatamente
+    this._current = incoming;
+    this._next    = outgoing;
   }
-}
+
+
 
 // ─────────────────────────────────────────────
 //  3. SPEECH MANAGER — Web Speech API en español
