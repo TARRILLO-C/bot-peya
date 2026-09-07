@@ -222,18 +222,17 @@ class SpeechManager {
     this._createInstance();
   }
 
-  /** Crea una instancia nueva (necesario tras algunos errores) */
+  /** Crea una instancia nueva */
   _createInstance() {
     if (this.rec) {
       try { this.rec.abort(); } catch (_) {}
     }
 
     this.rec = new this._SR();
-    // ── CLAVE: continuous:false + reinicio manual es MUCHO más estable ──
     this.rec.lang            = 'es-PE';
-    this.rec.continuous      = false;  // ← sesiones cortas, sin errores de red
-    this.rec.interimResults  = true;
-    this.rec.maxAlternatives = 5;      // más alternativas = mejor detección
+    this.rec.continuous      = true;   // Escucha continua activa siempre
+    this.rec.interimResults  = true;   // Resultados parciales inmediatos
+    this.rec.maxAlternatives = 5;
 
     this.rec.onstart  = ()  => this._onStart();
     this.rec.onresult = (e) => this._onResult(e);
@@ -241,7 +240,7 @@ class SpeechManager {
     this.rec.onend    = ()  => this._onEnd();
   }
 
-  /** Inicia el ciclo de escucha */
+  /** Inicia el ciclo de escucha continua */
   start() {
     this._active = true;
     this._errorCount = 0;
@@ -262,10 +261,9 @@ class SpeechManager {
     try {
       this.rec.start();
     } catch (e) {
-      // "already started" → ignorar; otro error → recrear
       if (!e.message.includes('already started')) {
         this._createInstance();
-        setTimeout(() => this._doStart(), 400);
+        setTimeout(() => this._doStart(), 50);
       }
     }
   }
@@ -273,7 +271,7 @@ class SpeechManager {
   _onStart() {
     this._sessionOpen = true;
     this._errorCount  = 0;
-    this.onStatusChange('listening', 'Escuchando... habla ahora');
+    this.onStatusChange('listening', '🔴 Micrófono Activo — Escuchando');
   }
 
   _onResult(e) {
@@ -281,7 +279,6 @@ class SpeechManager {
     let interimText = '';
 
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      // Revisa TODAS las alternativas para mayor cobertura
       const alts = [];
       for (let a = 0; a < e.results[i].length; a++) {
         alts.push(e.results[i][a].transcript.toLowerCase().trim());
@@ -290,16 +287,13 @@ class SpeechManager {
       if (e.results[i].isFinal) finalText   += best + ' ';
       else                      interimText += best;
 
-      // Busca comando en TODAS las alternativas (más detección)
-      if (e.results[i].isFinal) {
-        const allText = alts.join(' ');
-        this._matchCommand(allText);
-      }
+      // Evaluar inmediatamente tanto final como interim para velocidad ultra rápida
+      const allText = alts.join(' ');
+      this._matchCommand(allText);
     }
 
     this.onTranscript(interimText || finalText);
 
-    // También busca en interim para reaccionar más rápido
     if (interimText) this._matchCommand(interimText);
   }
 
@@ -318,28 +312,25 @@ class SpeechManager {
     this._sessionOpen = false;
     this._errorCount++;
 
-    // 'no-speech' es normal (silencio) → reiniciar rápido sin mensaje
+    // 'no-speech' es normal → reinicio inmediato en 10ms
     if (e.error === 'no-speech') {
-      this.onStatusChange('listening', 'Escuchando... (sin voz detectada)');
-      this._scheduleRestart(300);
+      this.onStatusChange('listening', '🔴 Micrófono Activo — Escuchando');
+      this._scheduleRestart(10);
       return;
     }
 
-    // 'network' → error más común; backoff corto y reintentar
     if (e.error === 'network') {
-      const delay = Math.min(800 * this._errorCount, 4000);
-      this.onStatusChange('listening',
-        `Reintentando conexión... (${this._errorCount}x)`);
-      this._createInstance(); // instancia fresca
+      const delay = Math.min(300 * this._errorCount, 1500);
+      this.onStatusChange('listening', 'Reconectando micrófono...');
+      this._createInstance();
       this._scheduleRestart(delay);
       return;
     }
 
-    // Errores fatales → no reintentar
     if (['not-allowed', 'audio-capture', 'service-not-allowed'].includes(e.error)) {
       this._active = false;
       const msgs = {
-        'not-allowed':         '❌ Permiso de micrófono denegado. Habilítalo en Chrome.',
+        'not-allowed':         '❌ Permiso de micrófono denegado.',
         'audio-capture':       '❌ No se encontró micrófono.',
         'service-not-allowed': '❌ Reconocimiento de voz bloqueado.',
       };
@@ -347,16 +338,14 @@ class SpeechManager {
       return;
     }
 
-    // Otros errores → reintentar con backoff
-    this.onStatusChange('listening', `Error (${e.error}), reintentando...`);
-    this._scheduleRestart(600);
+    this._scheduleRestart(100);
   }
 
   _onEnd() {
     this._sessionOpen = false;
     if (!this._active) return;
-    // Sesión terminó (normal) → nueva sesión inmediatamente
-    this._scheduleRestart(200);
+    // En móviles cuando se interrumpe la sesión, reiniciar inmediatamente sin espera
+    this._scheduleRestart(10);
   }
 
   _scheduleRestart(delay) {
