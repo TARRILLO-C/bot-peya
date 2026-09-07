@@ -208,9 +208,10 @@ class VideoManager {
     this._next    = outgoing;
   }
 
-
+} // fin VideoManager
 
 // ─────────────────────────────────────────────
+
 //  3. SPEECH MANAGER — Web Speech API en español
 //  Patrón: sesiones cortas + reinicio automático
 //  (más confiable que continuous:true en Chrome)
