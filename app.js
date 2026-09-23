@@ -388,10 +388,7 @@ class AvatarApp {
     this._bindLoginEvents();
     this._bindSetupEvents();
 
-    // Comprobar si ya inició sesión en esta sesión del navegador
-    if (sessionStorage.getItem('avatar_authenticated') === 'true') {
-      this._unlockApp();
-    }
+    // Siempre requerir contraseña al ingresar a la aplicación
 
     // Intenta cargar videos previamente guardados
     const slots = ['idle', 'izquierda', 'derecha', 'sonrisa'];
@@ -406,7 +403,6 @@ class AvatarApp {
         this.uploadCount++;
       }
       this._updateStartBtn();
-      this.toast('✅ Videos cargados desde la sesión anterior.', 'success');
     }
   }
 
@@ -417,7 +413,6 @@ class AvatarApp {
       e.preventDefault();
       const val = this._el.passwordInput.value;
       if (val === 'peya111') {
-        sessionStorage.setItem('avatar_authenticated', 'true');
         this._unlockApp();
         this.toast('🔑 Sesión iniciada con éxito', 'success');
       } else {
