@@ -52,11 +52,11 @@ body {
 }
 
 /* =========================================================
-   SETUP SCREEN
+   LOGIN SCREEN & SETUP SCREEN
    ========================================================= */
-#setup-screen {
+#login-screen, #setup-screen {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -65,6 +65,35 @@ body {
     radial-gradient(ellipse at 80% 80%, rgba(0,212,170,0.08) 0%, transparent 60%),
     var(--bg-dark);
   padding: 36px 16px 40px;
+}
+
+.login-input {
+  width: 100%;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.login-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(130, 92, 255, 0.2);
+}
+
+.login-error {
+  color: #ff5566;
+  font-size: 0.84rem;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 85, 102, 0.1);
+  border: 1px solid rgba(255, 85, 102, 0.25);
+  border-radius: var(--radius-sm);
+  text-align: center;
 }
 
 .setup-container {

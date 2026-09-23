@@ -16,8 +16,35 @@
 </head>
 <body>
 
+  <!-- ========== PANTALLA DE INICIO DE SESIÓN ========== -->
+  <div id="login-screen" class="screen active">
+    <div class="setup-container" style="max-width: 400px; margin: auto;">
+      <div class="logo-area">
+        <div class="logo-wordmark">Avatar Facial</div>
+        <p class="subtitle">Acceso Restringido</p>
+      </div>
+      <div class="setup-card login-card">
+        <h2>Iniciar Sesión</h2>
+        <p class="setup-desc">Ingresa la contraseña para ingresar al sistema.</p>
+        
+        <form id="login-form">
+          <div class="input-group">
+            <input type="password" id="password-input" class="login-input" placeholder="Contraseña..." required autocomplete="current-password" />
+          </div>
+          <div id="login-error" class="login-error" style="display: none;"></div>
+          <button type="submit" class="start-btn" style="margin-top: 16px;">
+            <span>Ingresar</span>
+            <svg class="start-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- ========== PANTALLA DE CONFIGURACIÓN ========== -->
-  <div id="setup-screen" class="screen active">
+  <div id="setup-screen" class="screen">
     <div class="setup-container">
       <div class="logo-area">
         <div class="logo-wordmark">Avatar Facial</div>

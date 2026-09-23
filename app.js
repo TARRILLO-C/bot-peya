@@ -352,6 +352,10 @@ class AvatarApp {
     this.uploadCount  = 0;
 
     this._el = {
+      loginScreen:   document.getElementById('login-screen'),
+      loginForm:     document.getElementById('login-form'),
+      passwordInput: document.getElementById('password-input'),
+      loginError:    document.getElementById('login-error'),
       setupScreen:   document.getElementById('setup-screen'),
       avatarScreen:  document.getElementById('avatar-screen'),
       startBtn:      document.getElementById('start-btn'),
@@ -381,7 +385,13 @@ class AvatarApp {
   }
 
   async _init() {
+    this._bindLoginEvents();
     this._bindSetupEvents();
+
+    // Comprobar si ya inició sesión en esta sesión del navegador
+    if (sessionStorage.getItem('avatar_authenticated') === 'true') {
+      this._unlockApp();
+    }
 
     // Intenta cargar videos previamente guardados
     const slots = ['idle', 'izquierda', 'derecha', 'sonrisa'];
@@ -397,6 +407,34 @@ class AvatarApp {
       }
       this._updateStartBtn();
       this.toast('✅ Videos cargados desde la sesión anterior.', 'success');
+    }
+  }
+
+  _bindLoginEvents() {
+    if (!this._el.loginForm) return;
+
+    this._el.loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = this._el.passwordInput.value;
+      if (val === 'peya111') {
+        sessionStorage.setItem('avatar_authenticated', 'true');
+        this._unlockApp();
+        this.toast('🔑 Sesión iniciada con éxito', 'success');
+      } else {
+        this._el.loginError.style.display = 'block';
+        this._el.loginError.textContent = '❌ Contraseña incorrecta. Inténtalo de nuevo.';
+        this._el.passwordInput.value = '';
+        this._el.passwordInput.focus();
+      }
+    });
+  }
+
+  _unlockApp() {
+    if (this._el.loginScreen) {
+      this._el.loginScreen.classList.remove('active');
+    }
+    if (this._el.setupScreen) {
+      this._el.setupScreen.classList.add('active');
     }
   }
 
